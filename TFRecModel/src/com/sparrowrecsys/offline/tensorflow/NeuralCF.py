@@ -2,12 +2,10 @@ import tensorflow as tf
 
 # Training samples path, change to your local path
 training_samples_file_path = tf.keras.utils.get_file("trainingSamples.csv",
-                                                     "file:///Users/zhewang/Workspace/SparrowRecSys/src/main"
-                                                     "/resources/webroot/sampledata/trainingSamples.csv")
+                                                     "file:///Users/ericdoug/Documents/mydev/SparrowRecSys/src/main/resources/webroot/sampledata/trainingSamples.csv")
 # Test samples path, change to your local path
 test_samples_file_path = tf.keras.utils.get_file("testSamples.csv",
-                                                 "file:///Users/zhewang/Workspace/SparrowRecSys/src/main"
-                                                 "/resources/webroot/sampledata/testSamples.csv")
+                                                 "file:///Users/ericdoug/Documents/mydev/SparrowRecSys/src/main/resources/webroot/sampledata/testSamples.csv")
 
 
 # load sample as tf dataset
@@ -43,12 +41,17 @@ inputs = {
 
 # neural cf model arch two. only embedding in each tower, then MLP as the interaction layers
 def neural_cf_model_1(feature_inputs, item_feature_columns, user_feature_columns, hidden_units):
+    # 物品侧特征层
     item_tower = tf.keras.layers.DenseFeatures(item_feature_columns)(feature_inputs)
+    # 用户侧特征层
     user_tower = tf.keras.layers.DenseFeatures(user_feature_columns)(feature_inputs)
+    # 连接层及后续多层神经网络
     interact_layer = tf.keras.layers.concatenate([item_tower, user_tower])
     for num_nodes in hidden_units:
         interact_layer = tf.keras.layers.Dense(num_nodes, activation='relu')(interact_layer)
+    # sigmoid单神经元输出层
     output_layer = tf.keras.layers.Dense(1, activation='sigmoid')(interact_layer)
+    # 定义keras模型
     neural_cf_model = tf.keras.Model(feature_inputs, output_layer)
     return neural_cf_model
 
@@ -96,7 +99,7 @@ for prediction, goodRating in zip(predictions[:12], list(test_dataset)[0][1][:12
 
 tf.keras.models.save_model(
     model,
-    "file:///Users/zhewang/Workspace/SparrowRecSys/src/main/resources/webroot/modeldata/neuralcf/002",
+    "file:///Users/ericdoug/Documents/mydev/SparrowRecSys/src/main/resources/webroot/modeldata/neuralcf/003",
     overwrite=True,
     include_optimizer=True,
     save_format=None,

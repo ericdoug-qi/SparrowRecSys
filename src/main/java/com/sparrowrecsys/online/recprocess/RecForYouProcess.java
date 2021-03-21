@@ -114,10 +114,11 @@ public class RecForYouProcess {
         if (null == user || null == candidates || candidates.size() == 0){
             return;
         }
-
+        // 保存所有样本的JSON数组
         JSONArray instances = new JSONArray();
         for (Movie m : candidates){
             JSONObject instance = new JSONObject();
+            // 为每个样本添加特征, userId和movieId
             instance.put("userId", user.getUserId());
             instance.put("movieId", m.getMovieId());
             instances.put(instance);
@@ -127,11 +128,15 @@ public class RecForYouProcess {
         instancesRoot.put("instances", instances);
 
         //need to confirm the tf serving end point
+        // 请求TensorFlow Serving API
+        System.out.println(instancesRoot.toString());
         String predictionScores = asyncSinglePostRequest("http://localhost:8501/v1/models/recmodel:predict", instancesRoot.toString());
         System.out.println("send user" + user.getUserId() + " request to tf serving.");
 
+        // 获取返回预估值
         JSONObject predictionsObject = new JSONObject(predictionScores);
         JSONArray scores = predictionsObject.getJSONArray("predictions");
+        // 将预估值加入返回的map
         for (int i = 0 ; i < candidates.size(); i++){
             candidateScoreMap.put(candidates.get(i), scores.getJSONArray(i).getDouble(0));
         }

@@ -26,27 +26,31 @@ object Embedding {
 
   def processItemSequence(sparkSession: SparkSession, rawSampleDataPath: String): RDD[Seq[String]] ={
 
-    //path of rating data
+    //path of rating data  设定rating数据的路径并用spark载入数据
     val ratingsResourcesPath = this.getClass.getResource(rawSampleDataPath)
     val ratingSamples = sparkSession.read.format("csv").option("header", "true").load(ratingsResourcesPath.getPath)
 
-    //sort by timestamp udf
+    //sort by timestamp udf 实现一个用户定义的操作函数，用于之后的排序
     val sortUdf: UserDefinedFunction = udf((rows: Seq[Row]) => {
       rows.map { case Row(movieId: String, timestamp: String) => (movieId, timestamp) }
         .sortBy { case (_, timestamp) => timestamp }
         .map { case (movieId, _) => movieId }
     })
 
+    println("-----------------ratingSamples-------------------")
     ratingSamples.printSchema()
 
     //process rating data then generate rating movie sequence data
+    // 把原始的rating数据处理成序列数据
     val userSeq = ratingSamples
-      .where(col("rating") >= 3.5)
-      .groupBy("userId")
-      .agg(sortUdf(collect_list(struct("movieId", "timestamp"))) as "movieIds")
-      .withColumn("movieIdStr", array_join(col("movieIds"), " "))
+      .where(col("rating") >= 3.5)  // 过滤掉评分在3.5以下的评分记录
+      .groupBy("userId")  // 按照用户id分组
+      .agg(sortUdf(collect_list(struct("movieId", "timestamp"))) as "movieIds")  // 每个用户生成一个序列并用刚才定义好的udf函数按照timestamp排序
+      .withColumn("movieIdStr", array_join(col("movieIds"), " "))  // 把所有的id连接成成一个String， 方便后续word2vec模型处理
 
+    println("---------------------userSeq----------------------")
     userSeq.select("userId", "movieIdStr").show(10, truncate = false)
+    // 把序列数据筛选出来， 丢掉其他过程数据
     userSeq.select("movieIdStr").rdd.map(r => r.getAs[String]("movieIdStr").split(" ").toSeq)
   }
 
@@ -101,22 +105,26 @@ object Embedding {
   }
 
   def trainItem2vec(sparkSession: SparkSession, samples : RDD[Seq[String]], embLength:Int, embOutputFilename:String, saveToRedis:Boolean, redisKeyPrefix:String): Word2VecModel = {
+    // 设置模型参数
     val word2vec = new Word2Vec()
       .setVectorSize(embLength)
       .setWindowSize(5)
       .setNumIterations(10)
 
+    // 训练模型
     val model = word2vec.fit(samples)
 
-
+    // 训练结束， 用模型查找与item 158最相似的20个item
     val synonyms = model.findSynonyms("158", 20)
     for ((synonym, cosineSimilarity) <- synonyms) {
       println(s"$synonym $cosineSimilarity")
     }
 
+    // 保存模型
     val embFolderPath = this.getClass.getResource("/webroot/modeldata/")
     val file = new File(embFolderPath.getPath + embOutputFilename)
     val bw = new BufferedWriter(new FileWriter(file))
+    // 用model。getVectors获取所有的Embedding向量
     for (movieId <- model.getVectors.keys) {
       bw.write(movieId + ":" + model.getVectors(movieId).mkString(" ") + "\n")
     }
@@ -274,11 +282,12 @@ object Embedding {
     val spark = SparkSession.builder.config(conf).getOrCreate()
 
     val rawSampleDataPath = "/webroot/sampledata/ratings.csv"
-    val embLength = 10
+    val embLength = 20
 
     val samples = processItemSequence(spark, rawSampleDataPath)
-    val model = trainItem2vec(spark, samples, embLength, "item2vecEmb.csv", saveToRedis = false, "i2vEmb")
-    //graphEmb(samples, spark, embLength, "itemGraphEmb.csv", saveToRedis = true, "graphEmb")
+
+    val model = trainItem2vec(spark, samples, embLength, "item2vecEmbs.csv", saveToRedis = false, "i2vEmb")
+    graphEmb(samples, spark, embLength, "itemGraphEmbs.csv", saveToRedis = true, "graphEmb")
     //generateUserEmb(spark, rawSampleDataPath, model, embLength, "userEmb.csv", saveToRedis = false, "uEmb")
   }
 }
